@@ -93,6 +93,29 @@ in {
       };
     };
 
+    launchd = {
+      enable = lib.mkEnableOption "vicinae launchd integration";
+
+      environment = lib.mkOption {
+        type = with lib.types; let
+          valueType = attrsOf (oneOf [
+            str
+            int
+            float
+            bool
+          ]);
+        in
+          valueType;
+        default = {};
+        description = "Environment variables for the vicinae daemon.";
+        example = lib.literalExpression ''
+          {
+            QT_SCALE_FACTOR=1.5;
+          }
+        '';
+      };
+    };
+
     extensions = lib.mkOption {
       type = lib.types.listOf lib.types.package;
       default = [];
@@ -210,6 +233,16 @@ in {
   config = let
     settingsFile = jsonFormat.generate "vicinae-settings.json" cfg.settings;
 
+    envValueToString = val:
+      if lib.isBool val
+      then
+        (
+          if val
+          then "1"
+          else "0"
+        )
+      else toString val;
+
     wrappedVicinae = pkgs.symlinkJoin {
       name = "${cfg.package.name}-configured";
       paths = [cfg.package];
@@ -270,19 +303,7 @@ in {
         };
         Service = {
           Environment =
-            lib.mapAttrsToList (
-              key: val: let
-                valueStr =
-                  if lib.isBool val
-                  then
-                    (
-                      if val
-                      then "1"
-                      else "0"
-                    )
-                  else toString val;
-              in "${key}=${valueStr}"
-            )
+            lib.mapAttrsToList (key: val: "${key}=${envValueToString val}")
             cfg.systemd.environment;
           Type = "simple";
           ExecStart = "${lib.getExe' wrappedVicinae "vicinae"} server";
@@ -292,6 +313,17 @@ in {
         };
         Install = lib.mkIf cfg.systemd.autoStart {
           WantedBy = [cfg.systemd.target];
+        };
+      };
+
+      launchd.agents.vicinae = lib.mkIf cfg.launchd.enable {
+        enable = true;
+        config = {
+          ProgramArguments = ["${lib.getExe' wrappedVicinae "vicinae"}" "server"];
+          EnvironmentVariables = lib.mapAttrs (_: envValueToString) cfg.launchd.environment;
+          RunAtLoad = true;
+          KeepAlive = true;
+          ProcessType = "Interactive";
         };
       };
     };
