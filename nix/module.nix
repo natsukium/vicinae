@@ -246,7 +246,7 @@ in {
     wrappedVicinae = pkgs.symlinkJoin {
       name = "${cfg.package.name}-configured";
       paths = [cfg.package];
-      nativeBuildInputs = [pkgs.makeWrapper];
+      nativeBuildInputs = [pkgs.makeBinaryWrapper];
       postBuild = let
         allOverrides = (lib.optional (cfg.settings != {}) settingsFile) ++ cfg.settingOverrides;
         overrideString = lib.concatStringsSep ":" allOverrides;
