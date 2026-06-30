@@ -6,7 +6,7 @@ self: {
 }: let
   cfg = config.programs.vicinae;
 
-  inherit (pkgs.stdenv.hostPlatform) system;
+  inherit (pkgs.stdenv.hostPlatform) system isDarwin;
   vicinaePkg = self.packages.${system}.default;
 
   jsonFormat = pkgs.formats.json {};
@@ -255,32 +255,29 @@ in {
           ${lib.optionalString (allOverrides != []) ''--set VICINAE_OVERRIDES "${overrideString}"''}
       '';
     };
+
+    mkDataFiles = dataDir:
+      builtins.listToAttrs (
+        map (item: {
+          name = "${dataDir}/extensions/${item.name}";
+          value.source = item;
+        })
+        cfg.extensions
+      )
+      // lib.mapAttrs' (
+        name: theme:
+          lib.nameValuePair "${dataDir}/themes/${name}.toml" {
+            source = tomlFormat.generate "vicinae-${name}-theme" theme;
+          }
+      )
+      cfg.themes;
   in
     lib.mkIf cfg.enable {
       home.packages = [wrappedVicinae];
 
-      xdg = let
-        themeFiles =
-          lib.mapAttrs' (
-            name: theme:
-              lib.nameValuePair "vicinae/themes/${name}.toml" {
-                source = tomlFormat.generate "vicinae-${name}-theme" theme;
-              }
-          )
-          cfg.themes;
-      in {
-        configFile = {};
+      xdg.dataFile = lib.mkIf (!isDarwin) (mkDataFiles "vicinae");
 
-        dataFile =
-          builtins.listToAttrs (
-            map (item: {
-              name = "vicinae/extensions/${item.name}";
-              value.source = item;
-            })
-            cfg.extensions
-          )
-          // themeFiles;
-      };
+      home.file = lib.mkIf isDarwin (mkDataFiles "Library/Application Support/vicinae");
 
       programs.firefox.nativeMessagingHosts = lib.mkIf (cfg.enableFirefoxIntegration && cfg.package != null) [
         (pkgs.writeTextDir "lib/mozilla/native-messaging-hosts/com.vicinae.vicinae.json" (
